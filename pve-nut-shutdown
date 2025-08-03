@@ -34,7 +34,7 @@ for cid in $(pct list --noheader | awk '{print $1}'); do
 done
 
 # 5. Wait up to five minutes for guests to die cleanly
-timeout=300; while pgrep -f 'kvm|lxc-start' >/dev/null && [ $timeout -gt 0 ]; do
+timeout=300; while pgrep -f '^(kvm|lxc-start)$' >/dev/null && [ $timeout -gt 0 ]; do
     sleep 5; timeout=$((timeout-5))
 done
 
