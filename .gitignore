@@ -1,0 +1,21 @@
+# General ignores
+.DS_Store
+*~
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+venv/
+.venv/
+ENV/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
