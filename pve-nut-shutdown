@@ -26,11 +26,11 @@ systemctl stop pve-ha-crm pve-ha-lrm watchdog-mux
 sleep 8
 
 # 4. Gracefully shut down every guest that is still running here
-for vid in $(qm  list --noheader | awk '{print $1}');  do
-    qm shutdown   "$vid" --timeout 60 >/dev/null 2>&1 || true
+qm list --noheader | awk '{print $1}' | while read -r vid; do
+    qm shutdown "$vid" --timeout 60 >/dev/null 2>&1 || true
 done
-for cid in $(pct list --noheader | awk '{print $1}'); do
-    pct shutdown  "$cid" --timeout 60 >/dev/null 2>&1 || true
+pct list --noheader | awk '{print $1}' | while read -r cid; do
+    pct shutdown "$cid" --timeout 60 >/dev/null 2>&1 || true
 done
 
 # 5. Wait up to five minutes for guests to die cleanly
