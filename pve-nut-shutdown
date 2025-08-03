@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# pve-nut-shutdown  – called by NUT when FSD fires
+set -eu
+
+log()  { logger -t NUT-SHUTDOWN "$*"; echo "$*"; }
+
+# 0. Make absolutely sure we only run once per node
+if systemctl --quiet is-system-running | grep -q "stopping"; then
+    exit 0
+fi
+
+NODE="$(hostname)"
+
+log "UPS FSD received – disabling HA on ${NODE}"
+
+# 1. Freeze the HA scheduler for this node (no migrations/fencing)
+ha-manager crm-command node-maintenance enable "$NODE"         :contentReference[oaicite:0]{index=0}
+
+# 2. Stop the local HA daemons so nothing restarts behind us
+systemctl stop pve-ha-crm pve-ha-lrm watchdog-mux               :contentReference[oaicite:1]{index=1}
+
+# 3. Give the CRM a few seconds to write its status
+sleep 8
+
+# 4. Gracefully shut down every guest that is still running here
+for vid in $(qm  list --noheader | awk '{print $1}');  do
+    qm shutdown   "$vid" --timeout 60 >/dev/null 2>&1 || true
+done
+for cid in $(pct list --noheader | awk '{print $1}'); do
+    pct shutdown  "$cid" --timeout 60 >/dev/null 2>&1 || true
+done                                                      :contentReference[oaicite:2]{index=2}
+
+# 5. Wait up to five minutes for guests to die cleanly
+timeout=300; while pgrep -f 'kvm|lxc-start' >/dev/null && [ $timeout -gt 0 ]; do
+    sleep 5; timeout=$((timeout-5))
+done
+
+log "Guests stopped – powering off ${NODE}"
+/sbin/shutdown -h now
