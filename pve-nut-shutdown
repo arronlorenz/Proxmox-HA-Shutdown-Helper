@@ -1,6 +1,6 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # pve-nut-shutdown  – called by NUT when FSD fires
-set -euo pipefail
+set -eu
 
 log() {
     logger -t NUT-SHUTDOWN -- "$@"
