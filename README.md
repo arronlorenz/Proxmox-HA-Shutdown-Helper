@@ -18,6 +18,7 @@ can run even if the cluster is losing quorum.
 
 | Step | Purpose |
 | ---- | ------- |
+| Check node status | Exit if system is already stopping. |
 | Enable node maintenance | Freeze HA scheduler to prevent migrations/fencing. |
 | Stop HA daemons | Prevent services from restarting during shutdown. |
 | Sleep 8 seconds | Give the CRM time to write status. |
