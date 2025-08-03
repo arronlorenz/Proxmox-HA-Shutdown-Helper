@@ -2,7 +2,10 @@
 # pve-nut-shutdown  – called by NUT when FSD fires
 set -eu
 
-log()  { logger -t NUT-SHUTDOWN "$*"; echo "$*"; }
+log() {
+    logger -t NUT-SHUTDOWN -- "$@"
+    printf '%s\n' "$*"
+}
 
 # 0. Make absolutely sure we only run once per node
 if systemctl --quiet is-system-running | grep -q "stopping"; then
