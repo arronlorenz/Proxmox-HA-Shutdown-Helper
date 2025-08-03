@@ -1,19 +1,29 @@
 # Proxmox-HA-Shutdown-Helper
-Helps to shutdown a simple Proxmox HA cluster primarily used with NUT for power outages.
 
+This repository contains `pve-nut-shutdown`, a small helper script that allows
+each node in a Proxmox HA cluster to shut down gracefully during a power
+outage. It is typically triggered by
+[NUT](https://networkupstools.org/) when a forced shutdown (FSD) occurs.
 
-Create /usr/local/sbin/pve-nut-shutdown on every node and make it executable (chmod 755 …).
-The script below is deliberately self-contained—no extra packages and no SSH to other nodes, so it can still run even if the cluster is already losing quorum.
+## Installation
 
+1. Copy `pve-nut-shutdown` to `/usr/local/sbin/pve-nut-shutdown` on every node.
+2. Make it executable: `chmod 755 /usr/local/sbin/pve-nut-shutdown`.
+3. Configure NUT to call the script when FSD fires.
 
-What it does
+The script is self-contained—it does not rely on SSH or extra packages, so it
+can run even if the cluster is losing quorum.
 
-Step	Why it matters
-node-maintenance enable	Tells the HA CRM to freeze this node; nothing will be migrated off or fenced while we are shutting down. 
-pve.proxmox.com
-systemctl stop pve-ha-crm pve-ha-lrm	Official Proxmox advice before a full-cluster power-off. 
-forum.proxmox.com
-Guest loops (qm / pct)	Gracefully power down every VM/CT still running. 
-forum.proxmox.com
+## What the script does
 
-Because the script runs on every node, you don’t have to decide which machine is the “master”. Each node looks after itself.
+| Step | Purpose |
+| ---- | ------- |
+| Enable node maintenance | Freeze HA scheduler to prevent migrations/fencing. |
+| Stop HA daemons | Prevent services from restarting during shutdown. |
+| Sleep 8 seconds | Give the CRM time to write status. |
+| Shut down guests | Stop each VM (`qm`) and container (`pct`) gracefully. |
+| Wait for guests | Allow up to five minutes for VMs/CTs to stop cleanly. |
+| Power off node | Halt the host once all guests are stopped. |
+
+Because the script runs on every node, there is no designated “master”; each
+node looks after itself.
