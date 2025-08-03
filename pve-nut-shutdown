@@ -8,7 +8,7 @@ log() {
 }
 
 # 0. Make absolutely sure we only run once per node
-if systemctl --quiet is-system-running | grep -q "stopping"; then
+if [ "$(systemctl is-system-running 2>/dev/null)" = "stopping" ]; then
     exit 0
 fi
 
