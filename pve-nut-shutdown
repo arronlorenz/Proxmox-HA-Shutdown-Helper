@@ -2,6 +2,18 @@
 # pve-nut-shutdown  – called by NUT when FSD fires
 set -eu
 
+maintenance=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --maintenance)
+            maintenance=1
+            ;;
+        *)
+            ;;
+    esac
+    shift
+done
+
 log() {
     logger -t NUT-SHUTDOWN -- "$@"
     printf '%s\n' "$*"
@@ -14,7 +26,11 @@ fi
 
 NODE="$(hostname)"
 
-log "UPS FSD received – disabling HA on ${NODE}"
+if [ "$maintenance" -eq 1 ]; then
+    log "Maintenance shutdown requested – disabling HA on ${NODE}"
+else
+    log "UPS FSD received – disabling HA on ${NODE}"
+fi
 
 # 1. Freeze the HA scheduler for this node (no migrations/fencing)
 ha-manager crm-command node-maintenance enable "$NODE"
