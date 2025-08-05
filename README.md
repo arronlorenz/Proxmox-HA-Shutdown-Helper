@@ -14,6 +14,18 @@ outage. It is typically triggered by
 The script is self-contained—it does not rely on SSH or extra packages, so it
 can run even if the cluster is losing quorum.
 
+## Planned maintenance
+
+If you need to drain a node for planned work, run the script manually with
+`--maintenance`:
+
+```bash
+pve-nut-shutdown --maintenance
+```
+
+The script will place the node into maintenance mode and stop guests
+gracefully. NUT continues to call the script without arguments on FSD events.
+
 ## What the script does
 
 | Step | Purpose |
