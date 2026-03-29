@@ -2,6 +2,12 @@
 # pve-nut-shutdown  – called by NUT when FSD fires
 set -eu
 
+# --- Configurable timeouts (override via environment) ----------------
+GUEST_TIMEOUT="${GUEST_TIMEOUT:-60}"        # per-guest shutdown timeout
+WAIT_TIMEOUT="${WAIT_TIMEOUT:-300}"         # max seconds to wait for guests
+HA_TIMEOUT="${HA_TIMEOUT:-15}"              # ha-manager command timeout
+CRM_SETTLE="${CRM_SETTLE:-8}"              # seconds for CRM to write status
+
 maintenance=0
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -24,6 +30,13 @@ if [ "$(systemctl is-system-running 2>/dev/null)" = "stopping" ]; then
     exit 0
 fi
 
+LOCKFILE="/run/pve-nut-shutdown.lock"
+exec 9>"$LOCKFILE"
+if ! flock -n 9; then
+    log "Another instance is already running – exiting"
+    exit 0
+fi
+
 NODE="$(hostname)"
 
 if [ "$maintenance" -eq 1 ]; then
@@ -33,26 +46,38 @@ else
 fi
 
 # 1. Freeze the HA scheduler for this node (no migrations/fencing)
-ha-manager crm-command node-maintenance enable "$NODE"
+timeout "$HA_TIMEOUT" \
+    ha-manager crm-command node-maintenance enable "$NODE" || true
 
 # 2. Stop the local HA daemons so nothing restarts behind us
 systemctl stop pve-ha-crm pve-ha-lrm watchdog-mux
 
 # 3. Give the CRM a few seconds to write its status
-sleep 8
+sleep "$CRM_SETTLE"
 
-# 4. Gracefully shut down every guest that is still running here
-qm list --noheader | awk '{print $1}' | while read -r vid; do
-    qm shutdown "$vid" --timeout 60 >/dev/null 2>&1 || true
-done
-pct list --noheader | awk '{print $1}' | while read -r cid; do
-    pct shutdown "$cid" --timeout 60 >/dev/null 2>&1 || true
+# 4. Gracefully shut down every guest that is still running
+qm list --noheader 2>/dev/null | awk '{print $1}' | while read -r vid; do
+    log "Shutting down VM ${vid}"
+    qm shutdown "$vid" --timeout "$GUEST_TIMEOUT" >/dev/null 2>&1 || true
 done
 
-# 5. Wait up to five minutes for guests to die cleanly
-timeout=300; while pgrep -f '^(kvm|lxc-start)$' >/dev/null && [ $timeout -gt 0 ]; do
-    sleep 5; timeout=$((timeout-5))
+pct list --noheader 2>/dev/null | awk '{print $1}' | while read -r cid; do
+    log "Shutting down CT ${cid}"
+    pct shutdown "$cid" --timeout "$GUEST_TIMEOUT" >/dev/null 2>&1 || true
 done
 
-log "Guests stopped – powering off ${NODE}"
+# 5. Wait for guests to die cleanly
+remaining="$WAIT_TIMEOUT"
+while pgrep '^(kvm|lxc-start)$' >/dev/null && [ "$remaining" -gt 0 ]; do
+    sleep 5
+    remaining=$((remaining - 5))
+done
+
+if pgrep '^(kvm|lxc-start)$' >/dev/null; then
+    log "WARNING: guests still running after ${WAIT_TIMEOUT}s – forcing power off"
+else
+    log "All guests stopped cleanly"
+fi
+
+log "Powering off ${NODE}"
 /sbin/shutdown -h now

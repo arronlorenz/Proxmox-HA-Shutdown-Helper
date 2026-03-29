@@ -1,0 +1,46 @@
+#!/bin/sh
+# pve-nut-shutdown-restore  – re-enable HA after a power-loss shutdown
+#
+# Run this after the node boots back up to take it out of maintenance
+# mode so the HA scheduler can manage guests on it again.
+#
+# In a 3-node cluster, quorum requires 2 nodes.  If this node boots
+# first, it must wait for at least one peer before the cluster API
+# becomes available.  The default timeout (600s / 10 minutes) is long
+# enough to cover staggered boot times.
+set -eu
+
+CLUSTER_TIMEOUT="${CLUSTER_TIMEOUT:-600}"   # max wait for quorum
+RETRY_INTERVAL="${RETRY_INTERVAL:-10}"      # seconds between checks
+
+log() {
+    logger -t NUT-RESTORE -- "$@"
+    printf '%s\n' "$*"
+}
+
+NODE="$(hostname)"
+
+log "Waiting for cluster quorum on ${NODE} (up to ${CLUSTER_TIMEOUT}s)"
+
+# Wait for the cluster to be reachable (quorum established)
+elapsed=0
+while ! pvecm status >/dev/null 2>&1 && [ "$elapsed" -lt "$CLUSTER_TIMEOUT" ]; do
+    sleep "$RETRY_INTERVAL"
+    elapsed=$((elapsed + RETRY_INTERVAL))
+done
+
+if ! pvecm status >/dev/null 2>&1; then
+    log "WARNING: cluster not reachable after ${CLUSTER_TIMEOUT}s on ${NODE}"
+    log "Run 'pve-nut-shutdown-restore' manually once quorum is restored"
+    exit 1
+fi
+
+log "Cluster quorum reached after ~${elapsed}s"
+
+# Disable maintenance mode so HA can schedule on this node again
+if ha-manager crm-command node-maintenance disable "$NODE"; then
+    log "HA maintenance disabled on ${NODE} – node is available"
+else
+    log "WARNING: failed to disable maintenance on ${NODE}"
+    exit 1
+fi

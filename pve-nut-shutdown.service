@@ -1,0 +1,17 @@
+[Unit]
+Description=Proxmox HA graceful shutdown (NUT FSD)
+Documentation=https://github.com/arronlorenz/Proxmox-HA-Shutdown-Helper
+After=pve-ha-lrm.service pve-ha-crm.service
+Before=nut-monitor.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pve-nut-shutdown
+# Override timeouts via drop-in or Environment= lines:
+# Environment=GUEST_TIMEOUT=120
+# Environment=WAIT_TIMEOUT=600
+TimeoutStartSec=600
+RemainAfterExit=no
+
+[Install]
+WantedBy=multi-user.target

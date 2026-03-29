@@ -1,0 +1,31 @@
+# /etc/nut/upsmon.conf  – example NUT client configuration
+#
+# This file shows how to wire NUT to call pve-nut-shutdown when a
+# forced shutdown (FSD) event occurs.  Adapt the MONITOR line to match
+# your UPS name, host, and credentials.
+#
+# See upsmon.conf(5) for full documentation.
+
+# Monitor the UPS named "ups" on localhost as a secondary client.
+# Replace "upsuser" and "password" with your NUT credentials.
+MONITOR ups@localhost 1 upsuser password secondary
+
+# How long to wait after FSD before giving up (seconds).
+FINALDELAY 0
+
+# Command to run when NUT needs to notify us of an event.
+NOTIFYCMD /usr/local/sbin/pve-nut-shutdown
+
+# Only trigger the NOTIFYCMD on forced shutdown events.
+NOTIFYFLAG ONBATT   SYSLOG
+NOTIFYFLAG ONLINE   SYSLOG
+NOTIFYFLAG LOWBATT  SYSLOG
+NOTIFYFLAG FSD      SYSLOG+EXEC
+NOTIFYFLAG COMMOK   SYSLOG
+NOTIFYFLAG COMMBAD  SYSLOG
+NOTIFYFLAG SHUTDOWN SYSLOG
+NOTIFYFLAG REPLBATT SYSLOG
+NOTIFYFLAG NOCOMM   SYSLOG
+
+# Run as root so the shutdown script can stop services and power off.
+RUN_AS_ROOT yes

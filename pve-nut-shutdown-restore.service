@@ -1,0 +1,22 @@
+[Unit]
+Description=Restore Proxmox HA after power-loss shutdown
+Documentation=https://github.com/arronlorenz/Proxmox-HA-Shutdown-Helper
+After=pve-cluster.service corosync.service pve-ha-crm.service
+Wants=pve-cluster.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pve-nut-shutdown-restore
+# Must exceed CLUSTER_TIMEOUT (default 600s) plus time for the
+# ha-manager command itself.
+TimeoutStartSec=660
+RemainAfterExit=yes
+# Retry up to 3 times if the script fails (e.g. quorum never formed
+# within the timeout but comes up shortly after).
+Restart=on-failure
+RestartSec=30
+StartLimitIntervalSec=3600
+StartLimitBurst=3
+
+[Install]
+WantedBy=multi-user.target
