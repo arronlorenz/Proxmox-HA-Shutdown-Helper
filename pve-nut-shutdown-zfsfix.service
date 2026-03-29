@@ -1,0 +1,18 @@
+[Unit]
+Description=Repair Proxmox ZFS replication after power-loss shutdown
+Documentation=https://github.com/arronlorenz/Proxmox-HA-Shutdown-Helper
+After=pve-nut-shutdown-restore.service pve-cluster.service
+Wants=pve-nut-shutdown-restore.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/pve-nut-shutdown-zfsfix
+TimeoutStartSec=300
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=60
+StartLimitIntervalSec=3600
+StartLimitBurst=3
+
+[Install]
+WantedBy=multi-user.target

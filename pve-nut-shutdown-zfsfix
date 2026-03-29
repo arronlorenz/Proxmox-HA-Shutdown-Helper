@@ -1,0 +1,70 @@
+#!/bin/sh
+# pve-nut-shutdown-zfsfix  – repair broken ZFS replication after power loss
+#
+# After an unclean shutdown, Proxmox replication jobs often fail because
+# the __replicate_ snapshots on source and target are out of sync.
+# This script removes stale replication snapshots for any job in an
+# error state and triggers an immediate full re-sync.
+set -eu
+
+RETRY_INTERVAL="${RETRY_INTERVAL:-10}"
+REPL_TIMEOUT="${REPL_TIMEOUT:-120}"       # max wait for pvesr to be ready
+
+log() {
+    logger -t NUT-ZFSFIX -- "$@"
+    printf '%s\n' "$*"
+}
+
+NODE="$(hostname)"
+
+# Wait for pvesr to be functional (needs cluster + API)
+elapsed=0
+while ! pvesr status >/dev/null 2>&1 && [ "$elapsed" -lt "$REPL_TIMEOUT" ]; do
+    sleep "$RETRY_INTERVAL"
+    elapsed=$((elapsed + RETRY_INTERVAL))
+done
+
+if ! pvesr status >/dev/null 2>&1; then
+    log "WARNING: pvesr not available after ${REPL_TIMEOUT}s – skipping"
+    exit 1
+fi
+
+# Find replication jobs targeting or sourced from this node that are
+# in an error state.
+fixed=0
+failed_jobs=$(pvesr status --output-format json 2>/dev/null \
+    | sed -n 's/.*"id":"\([^"]*\)".*"error":.*/\1/p') || true
+
+if [ -z "$failed_jobs" ]; then
+    log "No failed replication jobs found on ${NODE}"
+    exit 0
+fi
+
+log "Found failed replication jobs: ${failed_jobs}"
+
+for jobid in $failed_jobs; do
+    # Extract the VMID from the job ID (format: <vmid>-<index>)
+    vmid="${jobid%%-*}"
+
+    log "Fixing replication job ${jobid} (VM ${vmid})"
+
+    # Find and remove stale __replicate_ snapshots for this job on
+    # all local ZFS datasets belonging to this VM.
+    zfs list -H -t snapshot -o name 2>/dev/null \
+        | grep "__replicate_${jobid}" \
+        | while read -r snap; do
+            log "Removing stale snapshot: ${snap}"
+            zfs destroy "$snap" 2>/dev/null || true
+        done
+
+    # Trigger an immediate full re-sync.  pvesr will detect the
+    # missing snapshots and fall back to a full send automatically.
+    if pvesr schedule-now "$jobid" 2>/dev/null; then
+        log "Triggered re-sync for job ${jobid}"
+        fixed=$((fixed + 1))
+    else
+        log "WARNING: could not trigger re-sync for job ${jobid}"
+    fi
+done
+
+log "ZFS replication repair complete on ${NODE} (${fixed} jobs re-synced)"

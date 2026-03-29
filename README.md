@@ -14,6 +14,8 @@ triggered by [NUT](https://networkupstools.org/) when a forced shutdown
 | `pve-nut-shutdown-restore` | Post-boot restore script. |
 | `pve-nut-shutdown.service` | Systemd unit for the shutdown script. |
 | `pve-nut-shutdown-restore.service` | Systemd unit for the restore script. |
+| `pve-nut-shutdown-zfsfix` | ZFS replication repair script. |
+| `pve-nut-shutdown-zfsfix.service` | Systemd unit for the ZFS repair script. |
 | `nut/upsmon.conf.example` | Example NUT client configuration. |
 
 ## Installation
@@ -24,14 +26,18 @@ On **every** node in the cluster:
 # Copy scripts
 cp pve-nut-shutdown /usr/local/sbin/pve-nut-shutdown
 cp pve-nut-shutdown-restore /usr/local/sbin/pve-nut-shutdown-restore
+cp pve-nut-shutdown-zfsfix /usr/local/sbin/pve-nut-shutdown-zfsfix
 chmod 755 /usr/local/sbin/pve-nut-shutdown \
-          /usr/local/sbin/pve-nut-shutdown-restore
+          /usr/local/sbin/pve-nut-shutdown-restore \
+          /usr/local/sbin/pve-nut-shutdown-zfsfix
 
 # Install systemd units
 cp pve-nut-shutdown.service /etc/systemd/system/
 cp pve-nut-shutdown-restore.service /etc/systemd/system/
+cp pve-nut-shutdown-zfsfix.service /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable pve-nut-shutdown-restore.service
+systemctl enable pve-nut-shutdown-restore.service \
+                 pve-nut-shutdown-zfsfix.service
 ```
 
 Then configure NUT to call the shutdown script when FSD fires.  See
@@ -102,6 +108,27 @@ If all retries fail, run the restore manually once quorum is available:
 pve-nut-shutdown-restore
 ```
 
+## ZFS replication repair
+
+After a power event, Proxmox ZFS replication jobs often break because
+the `__replicate_` snapshots on source and target nodes are out of
+sync.  Normally this requires manually deleting and recreating the
+replication job from the web UI.
+
+The `pve-nut-shutdown-zfsfix` service automates this.  It runs after
+the restore service and:
+
+1. Checks `pvesr status` for jobs in an error state.
+2. Removes stale `__replicate_` snapshots for those jobs.
+3. Triggers an immediate full re-sync via `pvesr schedule-now`.
+
+The service retries up to 3 times if `pvesr` is not yet available.
+To run it manually:
+
+```bash
+pve-nut-shutdown-zfsfix
+```
+
 ## Configuration
 
 All timeouts can be tuned via environment variables.  Defaults are
@@ -122,6 +149,13 @@ shown below:
 | -------- | ------- | ----------- |
 | `CLUSTER_TIMEOUT` | `600` | Max time to wait for cluster quorum. |
 | `RETRY_INTERVAL` | `10` | Seconds between quorum checks. |
+
+**ZFS repair script** (`pve-nut-shutdown-zfsfix`):
+
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `REPL_TIMEOUT` | `120` | Max wait for `pvesr` to be available. |
+| `RETRY_INTERVAL` | `10` | Seconds between availability checks. |
 
 To override via systemd, create a drop-in:
 
